@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 适配iPad屏幕 -->
+    <title>申论格子编辑工具（iPad可用）</title>
+    <style>
+        /* 适配iPad触摸操作，按钮和格子放大，更易点击 */
+        .control-panel {
+            margin: 20px 15px;
+            display: flex;
+            flex-wrap: wrap; /* 屏幕窄时自动换行 */
+            gap: 12px;
+            align-items: center;
+        }
+        button, input {
+            padding: 10px 16px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            touch-action: manipulation; /* 优化触摸响应 */
+        }
+        button {
+            background-color: #f5f5f5;
+            cursor: pointer;
+        }
+        button:active {
+            background-color: #e0e0e0; /* 触摸按压反馈 */
+        }
+        .count-info {
+            color: #333;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+        .count-info.red {
+            color: #e53935; /* 超格标红 */
+        }
+
+        /* 格子容器：适配iPad屏幕，避免横向滚动 */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(25, 28px); /* 适当缩小格子宽度，适配iPad */
+            gap: 0;
+            border-top: 1px solid #ccc;
+            border-left: 1px solid #ccc;
+            margin: 0 15px;
+            overflow-x: auto; /* 若屏幕过窄，允许横向滚动 */
+            padding-bottom: 15px;
+        }
+        .grid-cell {
+            width: 28px;
+            height: 28px;
+            border-right: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            font-size: 16px;
+            line-height: 28px; /* 文字垂直居中 */
+            text-align: center;
+            outline: none;
+            cursor: text;
+            touch-action: manipulation;
+        }
+        /* 正文空两格标记（灰色背景） */
+        .grid-cell.indent {
+            background-color: #f5f5f5;
+            pointer-events: none; /* 禁止点击 */
+        }
+        /* 聚焦格子时加边框，方便触摸定位 */
+        .grid-cell:focus {
+            border: 2px solid #2196f3;
+            margin: -1px; /* 抵消边框宽度，避免格子错位 */
+        }
+    </style>
+    <!-- 引入html2canvas，用于导出图片（可选，用CDN无需下载） -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+</head>
+<body>
+    <!-- 控制区：适配触摸，按钮放大 -->
+    <div class="control-panel">
+        <label style="font-size: 16px;">格子行数：</label>
+        <input type="number" id="rowInput" value="20" min="5" max="50" style="width: 80px;">
+        <button onclick="generateGrid()">生成格子</button>
+        <button onclick="clearGrid()">清空内容</button>
+        <button onclick="copyAllContent()">复制内容</button>
+        <button onclick="exportAsImage()">导出图片</button>
+        <div class="count-info" id="countInfo">已用格子：0 / <span id="totalGrid">500</span></div>
+    </div>
+
+    <!-- 格子编辑区 -->
+    <div class="grid-container" id="gridContainer"></div>
+
+    <script>
+        const COL_NUM = 25; // 固定25列，匹配申论答题纸
+        let currentRow = 20; // 默认20行（500字）
+        let gridCells = []; // 存储所有格子元素
+
+        // 1. 生成格子（核心功能）
+        function generateGrid() {
+            const rowInput = document.getElementById('rowInput');
+            const rowNum = parseInt(rowInput.value);
+            
+            // 校验行数（避免异常输入）
+            if (isNaN(rowNum) || rowNum < 5 || rowNum > 50) {
+                alert('请输入 5-50 之间的行数！');
+                rowInput.value = currentRow;
+                return;
+            }
+
+            currentRow = rowNum;
+            const totalGrid = COL_NUM * currentRow;
+            document.getElementById('totalGrid').textContent = totalGrid;
+
+            // 清空现有格子
+            const gridContainer = document.getElementById('gridContainer');
+            gridContainer.innerHTML = '';
+            gridCells = [];
+
+            // 生成新格子（按行循环）
+            for (let row = 0; row < currentRow; row++) {
+                for (let col = 0; col < COL_NUM; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    
+                    // 正文行（第2行及以后）前两格设为“空两格”
+                    if (row >= 1 && col < 2) {
+                        cell.classList.add('indent');
+                    }
+
+                    // 开启编辑功能（排除空两格的格子）
+                    cell.contentEditable = row >= 1 && col < 2? false : true;
+
+                    // 输入事件：一格一字+自动跳格
+                    cell.addEventListener('input', function() {
+                        // 限制每个格子只存1个字符（含标点）
+                        if (this.textContent.length > 1) {
+                            const extraChars = this.textContent.slice(1);
+                            this.textContent = this.textContent.slice(0, 1);
+
+                            // 多余字符自动填入后续格子
+                            let currentIndex = gridCells.indexOf(this);
+                            for (let i = 0; i < extraChars.length; i++) {
+                                currentIndex++;
+                                if (currentIndex >= gridCells.length) break;
+                                gridCells[currentIndex].textContent = extraChars[i];
+                                // 最后一个字符填入后聚焦
+                                if (i === extraChars.length - 1) {
+                                    gridCells[currentIndex].focus();
+                                }
+                            }
+                        }
+
+                        // 单个字符输入完，自动跳下一格
+                        const currentIndex = gridCells.indexOf(this);
+                        if (currentIndex < gridCells.length - 1 && this.textContent) {
+                            gridCells[currentIndex + 1].focus();
+                        }
+
+                        // 更新字数统计
+                        updateCount();
+                    });
+
+                    gridContainer.appendChild(cell);
+                    gridCells.push(cell);
+                }
+            }
+
+            updateCount();
+        }
+
+        // 2. 清空所有内容
+        function clearGrid() {
+            gridCells.forEach(cell => {
+                if (cell.contentEditable) cell.textContent = '';
+            });
+            updateCount();
+            alert('已清空内容！');
+        }
+
+        // 3. 跨平台复制内容（按行拼接，适配iPad）
+        function copyAllContent() {
+            let content = '';
+            // 按行拼接，还原答题纸格式
+            for (let row = 0; row < currentRow; row++) {
+                let rowContent = '';
+                const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
+                rowCells.forEach(cell => {
+                    rowContent += cell.textContent.trim() || '□'; // 空格子用□占位
+                });
+                content += rowContent + '\n'; // 每行结尾加换行
+            }
+
+            // 调用浏览器复制API（支持iOS）
+            navigator.clipboard.writeText(content)
+               .then(() => alert('复制成功！可粘贴到备忘录/Word'))
+               .catch(() => alert('复制失败，请手动选中内容复制'));
+        }
+
+        // 4. 导出图片（支持iPad保存到相册）
+        function exportAsImage() {
+            const gridContainer = document.getElementById('gridContainer');
+            // 隐藏控制区，只导出格子区域（可选）
+            const controlPanel = document.querySelector('.control-panel');
+            controlPanel.style.display = 'none';
+
+            // 将格子转为图片
+            html2canvas(gridContainer, { scale: 2 }) // 2倍缩放，避免模糊
+               .then(canvas => {
+                    // 创建下载链接
+                    const link = document.createElement('a');
+                    link.download = `申论练习_${new Date().toLocaleDateString()}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+
+                    // 恢复控制区显示
+                    controlPanel.style.display = 'flex';
+                    alert('图片已生成，可在浏览器下载记录中找到！');
+                })
+               .catch(() => {
+                    controlPanel.style.display = 'flex';
+                    alert('导出失败，请重试！');
+                });
+        }
+
+        // 5. 实时更新字数统计
+        function updateCount() {
+            const used = gridCells.filter(cell => cell.textContent.trim()!== '').length;
+            const total = parseInt(document.getElementById('totalGrid').textContent);
+            const countInfo = document.getElementById('countInfo');
+            countInfo.innerHTML = `已用格子：${used} / ${total}`;
+            countInfo.className = used > total? 'count-info red' : 'count-info';
+        }
+
+        // 6. 自动保存与恢复（页面刷新/重启不丢内容）
+        window.addEventListener('beforeunload', () => {
+            const content = gridCells.map(cell => cell.textContent);
+            localStorage.setItem('shenlunData', JSON.stringify({
+                rows: currentRow,
+                content: content
+            }));
+        });
+
+        // 页面加载时恢复数据并生成格子
+        window.onload = () => {
+            const savedData = JSON.parse(localStorage.getItem('shenlunData'));
+            if (savedData) {
+                currentRow = savedData.rows;
+                document.getElementById('rowInput').value = currentRow;
+            }
+            generateGrid();
+            // 恢复之前的内容
+            if (savedData?.content) {
+                savedData.content.forEach((text, index) => {
+                    if (gridCells[index]) gridCells[index].textContent = text;
+                });
+                updateCount();
+            }
+        };
+    </script>
+</body>
+</html>
