@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>申论格子编辑工具（生成格子修复终版）</title>
+    <title>申论格子编辑工具（最终优化复制版）</title>
     <style>
         .control-panel {
             margin: 20px 15px;
@@ -84,30 +84,26 @@
         const COL_NUM = 25;
         let currentRow = 20;
         let gridCells = [];
-        // 关键：获取容器元素并缓存，避免重复查询导致的引用问题
         const gridContainer = document.getElementById('gridContainer');
         const rowInput = document.getElementById('rowInput');
         const totalGridEl = document.getElementById('totalGrid');
         const countInfoEl = document.getElementById('countInfo');
 
-        // 终极修复：生成格子（彻底清空旧数据+重新生成）
+        // 生成格子（正常功能）
         function generateGrid() {
-            // 1. 强制清空所有旧数据（解决“格子数量不变”的核心）
-            gridContainer.innerHTML = ''; // 清空容器内所有旧格子
-            gridCells = []; // 重置格子数组
+            gridContainer.innerHTML = '';
+            gridCells = [];
             const inputRowNum = parseInt(rowInput.value.trim());
 
-            // 2. 严格校验行数
             if (isNaN(inputRowNum) || inputRowNum < 5 || inputRowNum > 50) {
                 alert(`请输入 5-50 之间的行数！当前输入为：${rowInput.value}`);
-                rowInput.value = currentRow; // 重置为有效行数
+                rowInput.value = currentRow;
                 return;
             }
             currentRow = inputRowNum;
             const totalGridNum = COL_NUM * currentRow;
-            totalGridEl.textContent = totalGridNum; // 更新总格子数显示
+            totalGridEl.textContent = totalGridNum;
 
-            // 3. 重新生成新格子（逐行逐列，无空两格）
             for (let row = 0; row < currentRow; row++) {
                 for (let col = 0; col < COL_NUM; col++) {
                     const cell = document.createElement('div');
@@ -169,29 +165,63 @@
             }
 
             updateCount();
-            // 调试提示：生成后显示实际行数和格子数，方便确认
             console.log(`生成成功：${currentRow}行 × ${COL_NUM}列，总格子数${gridCells.length}`);
         }
 
-        // 清空内容（只清文字，不清格子）
+        // 清空内容
         function clearGrid() {
             gridCells.forEach(cell => cell.textContent = '');
             updateCount();
             alert('已清空所有文字内容！');
         }
 
-        // 复制内容
+        // 最终优化：复制逻辑（完全匹配需求）
         function copyAllContent() {
             let content = '';
-            for (let row = 0; row < currentRow; row++) {
+            let lastHasTextRow = -1; // 最后一行有字的行号
+
+            // 1. 先找最后一行有字的行（从后往前）
+            for (let row = currentRow - 1; row >= 0; row--) {
                 const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
+                const hasText = rowCells.some(cell => cell.textContent.trim() !== '');
+                if (hasText) {
+                    lastHasTextRow = row;
+                    break;
+                }
+            }
+
+            // 2. 只处理“第一行到最后一行有字”的范围
+            for (let row = 0; row <= lastHasTextRow; row++) {
+                const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
+                let lastTextCol = -1; // 当前行最后一个有字的列号
+
+                // 找当前行最后一个有字的格子
+                for (let col = rowCells.length - 1; col >= 0; col--) {
+                    if (rowCells[col].textContent.trim() !== '') {
+                        lastTextCol = col;
+                        break;
+                    }
+                }
+
+                // 3. 拼接当前行内容：
+                // - 有字行：到最后一个字为止，空格用半角空格（" "）
+                // - 空行：不保留任何空格，直接加换行
                 let rowText = '';
-                rowCells.forEach(cell => rowText += cell.textContent.trim() || ' ');
+                if (lastTextCol !== -1) { // 当前行有字
+                    for (let col = 0; col <= lastTextCol; col++) {
+                        rowText += rowCells[col].textContent.trim() || ' '; // 半角空格占位
+                    }
+                }
+                // 空行则 rowText 为空，直接加换行
+
+                // 加入总内容（行之间加换行）
                 content += rowText + '\n';
             }
+
+            // 复制到剪贴板
             navigator.clipboard.writeText(content)
-               .then(() => alert('复制成功！'))
-               .catch(() => alert('复制失败，请手动选中复制'));
+               .then(() => alert('复制成功！空行无空格，空格用半角占位'))
+               .catch(() => alert('复制失败，请手动选中内容复制'));
         }
 
         // 导出图片
@@ -222,7 +252,7 @@
             countInfoEl.className = used > total? 'count-info red' : 'count-info';
         }
 
-        // 页面加载时生成默认格子
+        // 页面加载生成格子
         window.onload = () => {
             try {
                 const savedData = JSON.parse(localStorage.getItem('shenlunData'));
@@ -233,7 +263,7 @@
             } catch (e) {
                 console.log('加载缓存失败，使用默认行数');
             }
-            generateGrid(); // 页面加载就生成格子
+            generateGrid();
         };
 
         // 保存数据
