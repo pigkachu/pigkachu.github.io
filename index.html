@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>申论格子编辑工具（iPad可用·聚焦优化版）</title>
+    <title>申论格子编辑工具（生成格子修复终版）</title>
     <style>
         .control-panel {
             margin: 20px 15px;
@@ -31,6 +31,7 @@
             font-weight: bold;
             font-size: 16px;
             margin-top: 8px;
+            width: 100%;
         }
         .count-info.red {
             color: #e53935;
@@ -40,8 +41,8 @@
             display: grid;
             grid-template-columns: repeat(25, 28px);
             gap: 0;
-            border-top: 1px solid #ccc;
-            border-left: 1px solid #ccc;
+            border-top: 1px solid #333;
+            border-left: 1px solid #333;
             margin: 0 15px;
             overflow-x: auto;
             padding-bottom: 15px;
@@ -49,18 +50,15 @@
         .grid-cell {
             width: 28px;
             height: 28px;
-            border-right: 1px solid #ccc;
-            border-bottom: 1px solid #ccc;
+            border-right: 1px solid #333;
+            border-bottom: 1px solid #333;
             font-size: 16px;
             line-height: 28px;
             text-align: center;
             outline: none;
             cursor: text;
             touch-action: manipulation;
-        }
-        .grid-cell.indent {
-            background-color: #f5f5f5;
-            pointer-events: none;
+            box-sizing: border-box;
         }
         .grid-cell:focus {
             border: 2px solid #2196f3;
@@ -86,76 +84,73 @@
         const COL_NUM = 25;
         let currentRow = 20;
         let gridCells = [];
+        // 关键：获取容器元素并缓存，避免重复查询导致的引用问题
+        const gridContainer = document.getElementById('gridContainer');
+        const rowInput = document.getElementById('rowInput');
+        const totalGridEl = document.getElementById('totalGrid');
+        const countInfoEl = document.getElementById('countInfo');
 
+        // 终极修复：生成格子（彻底清空旧数据+重新生成）
         function generateGrid() {
-            const rowInput = document.getElementById('rowInput');
-            const rowNum = parseInt(rowInput.value);
-            
-            if (isNaN(rowNum) || rowNum < 5 || rowNum > 50) {
-                alert('请输入 5-50 之间的行数！');
-                rowInput.value = currentRow;
+            // 1. 强制清空所有旧数据（解决“格子数量不变”的核心）
+            gridContainer.innerHTML = ''; // 清空容器内所有旧格子
+            gridCells = []; // 重置格子数组
+            const inputRowNum = parseInt(rowInput.value.trim());
+
+            // 2. 严格校验行数
+            if (isNaN(inputRowNum) || inputRowNum < 5 || inputRowNum > 50) {
+                alert(`请输入 5-50 之间的行数！当前输入为：${rowInput.value}`);
+                rowInput.value = currentRow; // 重置为有效行数
                 return;
             }
+            currentRow = inputRowNum;
+            const totalGridNum = COL_NUM * currentRow;
+            totalGridEl.textContent = totalGridNum; // 更新总格子数显示
 
-            currentRow = rowNum;
-            const totalGrid = COL_NUM * currentRow;
-            document.getElementById('totalGrid').textContent = totalGrid;
-
-            const gridContainer = document.getElementById('gridContainer');
-            gridContainer.innerHTML = '';
-            gridCells = [];
-
+            // 3. 重新生成新格子（逐行逐列，无空两格）
             for (let row = 0; row < currentRow; row++) {
                 for (let col = 0; col < COL_NUM; col++) {
                     const cell = document.createElement('div');
                     cell.className = 'grid-cell';
-                    
-                    if (row >= 1 && col < 2) {
-                        cell.classList.add('indent');
-                    }
+                    cell.contentEditable = true;
+                    gridContainer.appendChild(cell);
+                    gridCells.push(cell);
 
-                    cell.contentEditable = row >= 1 && col < 2? false : true;
-
-                    cell.addEventListener('input', function() {
-                        // 退格键处理
-                        const isBackspace = this.textContent === '' && event.inputType === 'deleteContentBackward';
-                        if (isBackspace) {
+                    // 退格键处理
+                    cell.addEventListener('keydown', function(e) {
+                        if (e.key === 'Backspace' || e.keyCode === 8) {
+                            e.preventDefault();
                             const currentIndex = gridCells.indexOf(this);
+                            this.textContent = '';
                             if (currentIndex > 0) {
-                                this.textContent = '';
-                                const prevCell = gridCells[currentIndex - 1];
-                                prevCell.focus();
+                                gridCells[currentIndex - 1].focus();
                                 const range = document.createRange();
                                 const sel = window.getSelection();
-                                range.selectNodeContents(prevCell);
+                                range.selectNodeContents(gridCells[currentIndex - 1]);
                                 range.collapse(false);
                                 sel.removeAllRanges();
                                 sel.addRange(range);
                             }
                             updateCount();
-                            return;
                         }
+                    });
 
-                        // 核心修复：多字符输入时的聚焦逻辑
+                    // 输入处理
+                    cell.addEventListener('input', function() {
+                        if (event.inputType === 'deleteContentBackward') return;
                         if (this.textContent.length > 1) {
-                            const allChars = this.textContent; // 取所有输入字符（含第一个）
-                            this.textContent = allChars[0]; // 当前格子只留第一个字符
-                            const extraChars = allChars.slice(1); // 多余字符
-
+                            const allChars = this.textContent;
+                            this.textContent = allChars[0];
+                            const extraChars = allChars.slice(1);
                             let currentIndex = gridCells.indexOf(this);
-                            let lastFilledIndex = currentIndex; // 记录最后一个填字符的格子索引
-
-                            // 填充多余字符到后续格子
+                            let lastFilledIndex = currentIndex;
                             for (let i = 0; i < extraChars.length; i++) {
                                 currentIndex++;
-                                if (currentIndex >= gridCells.length) break; // 超出总格子数则停止
+                                if (currentIndex >= gridCells.length) break;
                                 gridCells[currentIndex].textContent = extraChars[i];
-                                lastFilledIndex = currentIndex; // 更新最后填充索引
+                                lastFilledIndex = currentIndex;
                             }
-
-                            // 修复：聚焦到最后一个填入字符的格子
                             gridCells[lastFilledIndex].focus();
-                            // 定位光标到最后一格末尾
                             const range = document.createRange();
                             const sel = window.getSelection();
                             range.selectNodeContents(gridCells[lastFilledIndex]);
@@ -163,76 +158,85 @@
                             sel.removeAllRanges();
                             sel.addRange(range);
                         } else if (this.textContent) {
-                            // 单个字符输入：正常跳下一格
                             const currentIndex = gridCells.indexOf(this);
                             if (currentIndex < gridCells.length - 1) {
                                 gridCells[currentIndex + 1].focus();
                             }
                         }
-
                         updateCount();
                     });
-
-                    gridContainer.appendChild(cell);
-                    gridCells.push(cell);
                 }
             }
 
             updateCount();
+            // 调试提示：生成后显示实际行数和格子数，方便确认
+            console.log(`生成成功：${currentRow}行 × ${COL_NUM}列，总格子数${gridCells.length}`);
         }
 
+        // 清空内容（只清文字，不清格子）
         function clearGrid() {
-            gridCells.forEach(cell => {
-                if (cell.contentEditable) cell.textContent = '';
-            });
+            gridCells.forEach(cell => cell.textContent = '');
             updateCount();
-            alert('已清空内容！');
+            alert('已清空所有文字内容！');
         }
 
+        // 复制内容
         function copyAllContent() {
             let content = '';
             for (let row = 0; row < currentRow; row++) {
-                let rowContent = '';
                 const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
-                rowCells.forEach(cell => {
-                    rowContent += cell.textContent.trim() || '□';
-                });
-                content += rowContent + '\n';
+                let rowText = '';
+                rowCells.forEach(cell => rowText += cell.textContent.trim() || ' ');
+                content += rowText + '\n';
             }
-
             navigator.clipboard.writeText(content)
-               .then(() => alert('复制成功！可粘贴到备忘录/Word'))
-               .catch(() => alert('复制失败，请手动选中内容复制'));
+               .then(() => alert('复制成功！'))
+               .catch(() => alert('复制失败，请手动选中复制'));
         }
 
+        // 导出图片
         function exportAsImage() {
-            const gridContainer = document.getElementById('gridContainer');
             const controlPanel = document.querySelector('.control-panel');
+            const originalDisplay = controlPanel.style.display;
             controlPanel.style.display = 'none';
-
             html2canvas(gridContainer, { scale: 2 })
                .then(canvas => {
                     const link = document.createElement('a');
                     link.download = `申论练习_${new Date().toLocaleDateString()}.png`;
                     link.href = canvas.toDataURL('image/png');
                     link.click();
-                    controlPanel.style.display = 'flex';
-                    alert('图片已生成，可在浏览器下载记录中找到！');
+                    controlPanel.style.display = originalDisplay;
+                    alert('图片已生成！');
                 })
                .catch(() => {
-                    controlPanel.style.display = 'flex';
-                    alert('导出失败，请重试！');
+                    controlPanel.style.display = originalDisplay;
+                    alert('导出失败，请重试');
                 });
         }
 
+        // 更新字数统计
         function updateCount() {
             const used = gridCells.filter(cell => cell.textContent.trim()!== '').length;
-            const total = parseInt(document.getElementById('totalGrid').textContent);
-            const countInfo = document.getElementById('countInfo');
-            countInfo.innerHTML = `已用格子：${used} / ${total}`;
-            countInfo.className = used > total? 'count-info red' : 'count-info';
+            const total = COL_NUM * currentRow;
+            countInfoEl.innerHTML = `已用格子：${used} / ${total}`;
+            countInfoEl.className = used > total? 'count-info red' : 'count-info';
         }
 
+        // 页面加载时生成默认格子
+        window.onload = () => {
+            try {
+                const savedData = JSON.parse(localStorage.getItem('shenlunData'));
+                if (savedData && savedData.rows >=5 && savedData.rows <=50) {
+                    currentRow = savedData.rows;
+                    rowInput.value = currentRow;
+                }
+            } catch (e) {
+                console.log('加载缓存失败，使用默认行数');
+            }
+            generateGrid(); // 页面加载就生成格子
+        };
+
+        // 保存数据
         window.addEventListener('beforeunload', () => {
             const content = gridCells.map(cell => cell.textContent);
             localStorage.setItem('shenlunData', JSON.stringify({
@@ -240,21 +244,6 @@
                 content: content
             }));
         });
-
-        window.onload = () => {
-            const savedData = JSON.parse(localStorage.getItem('shenlunData'));
-            if (savedData) {
-                currentRow = savedData.rows;
-                document.getElementById('rowInput').value = currentRow;
-            }
-            generateGrid();
-            if (savedData?.content) {
-                savedData.content.forEach((text, index) => {
-                    if (gridCells[index]) gridCells[index].textContent = text;
-                });
-                updateCount();
-            }
-        };
     </script>
 </body>
 </html>
