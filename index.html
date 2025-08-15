@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- 适配iPad屏幕 -->
-    <title>申论格子编辑工具（iPad可用）</title>
+    <title>申论格子编辑工具（iPad可用·退格优化版）</title>
     <style>
         /* 适配iPad触摸操作，按钮和格子放大，更易点击 */
         .control-panel {
@@ -71,7 +71,7 @@
             margin: -1px; /* 抵消边框宽度，避免格子错位 */
         }
     </style>
-    <!-- 引入html2canvas，用于导出图片（可选，用CDN无需下载） -->
+    <!-- 引入html2canvas，用于导出图片（CDN无需下载） -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
@@ -129,9 +129,30 @@
                     // 开启编辑功能（排除空两格的格子）
                     cell.contentEditable = row >= 1 && col < 2? false : true;
 
-                    // 输入事件：一格一字+自动跳格
+                    // 输入事件：一格一字+自动跳格+退格删除优化
                     cell.addEventListener('input', function() {
-                        // 限制每个格子只存1个字符（含标点）
+                        // 新增：处理退格键（删除内容并跳上一格）
+                        const isBackspace = this.textContent === '' && event.inputType === 'deleteContentBackward';
+                        if (isBackspace) {
+                            const currentIndex = gridCells.indexOf(this);
+                            // 不是第一个格子时，跳至上一格
+                            if (currentIndex > 0) {
+                                this.textContent = ''; // 清空当前格子（防残留）
+                                const prevCell = gridCells[currentIndex - 1];
+                                prevCell.focus(); // 聚焦上一格
+                                // 光标定位到上一格末尾（优化输入体验）
+                                const range = document.createRange();
+                                const sel = window.getSelection();
+                                range.selectNodeContents(prevCell);
+                                range.collapse(false);
+                                sel.removeAllRanges();
+                                sel.addRange(range);
+                            }
+                            updateCount();
+                            return; // 退格逻辑处理完，不执行后续输入逻辑
+                        }
+
+                        // 原有：限制每个格子只存1个字符（含标点）
                         if (this.textContent.length > 1) {
                             const extraChars = this.textContent.slice(1);
                             this.textContent = this.textContent.slice(0, 1);
@@ -149,13 +170,13 @@
                             }
                         }
 
-                        // 单个字符输入完，自动跳下一格
+                        // 原有：单个字符输入完，自动跳下一格
                         const currentIndex = gridCells.indexOf(this);
                         if (currentIndex < gridCells.length - 1 && this.textContent) {
                             gridCells[currentIndex + 1].focus();
                         }
 
-                        // 更新字数统计
+                        // 原有：更新字数统计
                         updateCount();
                     });
 
@@ -198,14 +219,13 @@
         // 4. 导出图片（支持iPad保存到相册）
         function exportAsImage() {
             const gridContainer = document.getElementById('gridContainer');
-            // 隐藏控制区，只导出格子区域（可选）
+            // 隐藏控制区，只导出格子区域
             const controlPanel = document.querySelector('.control-panel');
             controlPanel.style.display = 'none';
 
-            // 将格子转为图片
-            html2canvas(gridContainer, { scale: 2 }) // 2倍缩放，避免模糊
+            // 将格子转为图片（2倍缩放防模糊）
+            html2canvas(gridContainer, { scale: 2 })
                .then(canvas => {
-                    // 创建下载链接
                     const link = document.createElement('a');
                     link.download = `申论练习_${new Date().toLocaleDateString()}.png`;
                     link.href = canvas.toDataURL('image/png');
