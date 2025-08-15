@@ -3,276 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>申论格子编辑工具（最终优化复制版）</title>
+    <title>每行25字中文输入框（CDN插件版）</title>
     <style>
-        .control-panel {
-            margin: 20px 15px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: center;
+        /* 基础样式：输入框与格子视觉对齐 */
+        .editor-container {
+            margin: 20px;
+            max-width: 800px;
         }
-        button, input {
-            padding: 10px 16px;
-            font-size: 16px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            touch-action: manipulation;
-        }
-        button {
-            background-color: #f5f5f5;
-            cursor: pointer;
-        }
-        button:active {
-            background-color: #e0e0e0;
-        }
-        .count-info {
-            color: #333;
-            font-weight: bold;
-            font-size: 16px;
-            margin-top: 8px;
+        /* 核心输入框：适配中文，每行25字 */
+        #chineseInput {
             width: 100%;
-        }
-        .count-info.red {
-            color: #e53935;
-        }
-
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(25, 28px);
-            gap: 0;
-            border-top: 1px solid #333;
-            border-left: 1px solid #333;
-            margin: 0 15px;
-            overflow-x: auto;
-            padding-bottom: 15px;
-        }
-        .grid-cell {
-            width: 28px;
-            height: 28px;
-            border-right: 1px solid #333;
-            border-bottom: 1px solid #333;
+            min-height: 300px;
+            padding: 10px;
+            font-family: "SimSun", serif; /* 中文标准字体 */
             font-size: 16px;
-            line-height: 28px;
-            text-align: center;
-            outline: none;
-            cursor: text;
-            touch-action: manipulation;
-            box-sizing: border-box;
+            line-height: 28px; /* 行高适配视觉格子 */
+            border: 1px solid #333;
+            resize: vertical;
+            word-break: keep-all; /* 禁止中文拆分换行 */
+            letter-spacing: 0;
         }
-        .grid-cell:focus {
-            border: 2px solid #2196f3;
-            margin: -1px;
+        /* 可选：格子视觉层（与输入框重叠，模拟答题纸） */
+        .grid-layer {
+            width: 100%;
+            min-height: 300px;
+            margin-top: -322px; /* 向上偏移，与输入框重叠 */
+            pointer-events: none; /* 不拦截输入事件 */
+            background: transparent;
+            background-size: 32px 28px; /* 格子尺寸：宽32px（适配1个中文）、高28px（行高） */
+            background-image: 
+                linear-gradient(to right, #ccc 1px, transparent 1px),
+                linear-gradient(to bottom, #ccc 1px, transparent 1px);
+            z-index: 1;
+        }
+        /* 字数提示 */
+        .char-hint {
+            margin-top: 8px;
+            color: #666;
+            font-size: 14px;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- 1. 引入jQuery（Input Limiter依赖） -->
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <!-- 2. 引入Input Limiter插件（CDN） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputlimiter/1.3.1/jquery.inputlimiter.min.js"></script>
 </head>
 <body>
-    <div class="control-panel">
-        <label style="font-size: 16px;">格子行数：</label>
-        <input type="number" id="rowInput" value="20" min="5" max="50" style="width: 80px;">
-        <button onclick="generateGrid()">生成格子</button>
-        <button onclick="clearGrid()">清空内容</button>
-        <button onclick="copyAllContent()">复制内容</button>
-        <button onclick="exportAsImage()">导出图片</button>
-        <div class="count-info" id="countInfo">已用格子：0 / <span id="totalGrid">500</span></div>
+    <div class="editor-container">
+        <h3>中文输入框（每行限25字，总限1000字）</h3>
+        <!-- 核心输入框 -->
+        <textarea id="chineseInput" placeholder="请输入中文内容，每行最多25字..."></textarea>
+        <!-- 可选：格子视觉层（不需要可删除） -->
+        <div class="grid-layer"></div>
+        <!-- 字数提示 -->
+        <div class="char-hint">
+            已输入：<span id="usedChars">0</span> 字 / 剩余：<span id="leftChars">1000</span> 字
+        </div>
     </div>
 
-    <div class="grid-container" id="gridContainer"></div>
-
     <script>
-        const COL_NUM = 25;
-        let currentRow = 20;
-        let gridCells = [];
-        const gridContainer = document.getElementById('gridContainer');
-        const rowInput = document.getElementById('rowInput');
-        const totalGridEl = document.getElementById('totalGrid');
-        const countInfoEl = document.getElementById('countInfo');
-
-        // 生成格子（正常功能）
-        function generateGrid() {
-            gridContainer.innerHTML = '';
-            gridCells = [];
-            const inputRowNum = parseInt(rowInput.value.trim());
-
-            if (isNaN(inputRowNum) || inputRowNum < 5 || inputRowNum > 50) {
-                alert(`请输入 5-50 之间的行数！当前输入为：${rowInput.value}`);
-                rowInput.value = currentRow;
-                return;
-            }
-            currentRow = inputRowNum;
-            const totalGridNum = COL_NUM * currentRow;
-            totalGridEl.textContent = totalGridNum;
-
-            for (let row = 0; row < currentRow; row++) {
-                for (let col = 0; col < COL_NUM; col++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'grid-cell';
-                    cell.contentEditable = true;
-                    gridContainer.appendChild(cell);
-                    gridCells.push(cell);
-
-                    // 退格键处理
-                    cell.addEventListener('keydown', function(e) {
-                        if (e.key === 'Backspace' || e.keyCode === 8) {
-                            e.preventDefault();
-                            const currentIndex = gridCells.indexOf(this);
-                            this.textContent = '';
-                            if (currentIndex > 0) {
-                                gridCells[currentIndex - 1].focus();
-                                const range = document.createRange();
-                                const sel = window.getSelection();
-                                range.selectNodeContents(gridCells[currentIndex - 1]);
-                                range.collapse(false);
-                                sel.removeAllRanges();
-                                sel.addRange(range);
-                            }
-                            updateCount();
-                        }
-                    });
-
-                    // 输入处理
-                    cell.addEventListener('input', function() {
-                        if (event.inputType === 'deleteContentBackward') return;
-                        if (this.textContent.length > 1) {
-                            const allChars = this.textContent;
-                            this.textContent = allChars[0];
-                            const extraChars = allChars.slice(1);
-                            let currentIndex = gridCells.indexOf(this);
-                            let lastFilledIndex = currentIndex;
-                            for (let i = 0; i < extraChars.length; i++) {
-                                currentIndex++;
-                                if (currentIndex >= gridCells.length) break;
-                                gridCells[currentIndex].textContent = extraChars[i];
-                                lastFilledIndex = currentIndex;
-                            }
-                            gridCells[lastFilledIndex].focus();
-                            const range = document.createRange();
-                            const sel = window.getSelection();
-                            range.selectNodeContents(gridCells[lastFilledIndex]);
-                            range.collapse(false);
-                            sel.removeAllRanges();
-                            sel.addRange(range);
-                        } else if (this.textContent) {
-                            const currentIndex = gridCells.indexOf(this);
-                            if (currentIndex < gridCells.length - 1) {
-                                gridCells[currentIndex + 1].focus();
-                            }
-                        }
-                        updateCount();
-                    });
+        $(function() {
+            // 核心配置：Input Limiter 插件初始化
+            $('#chineseInput').inputlimiter({
+                // 1. 总字数限制（按中文1字=1字符计算，可调整）
+                limit: 1000,
+                // 2. 每行字数限制（关键：中文1字=1字符，设为25）
+                lineLimit: 25,
+                // 3. 换行规则：满25字自动换行（true=自动换行，false=手动换行但限制字数）
+                autoPadLine: true,
+                // 4. 字符计数规则：中文1字=1字符（插件默认按Unicode字符计数，适配中文）
+                characterLimit: true,
+                // 5. 实时更新字数提示
+                onLimitReached: function() {
+                    updateCharHint();
+                },
+                onLimitExceeded: function() {
+                    updateCharHint();
+                },
+                onCharDeleted: function() {
+                    updateCharHint();
+                },
+                onCharAdded: function() {
+                    updateCharHint();
                 }
+            });
+
+            // 辅助函数：更新字数提示
+            function updateCharHint() {
+                const input = $('#chineseInput');
+                const used = input.val().length; // 中文按1字=1长度计算（插件已适配）
+                const total = input.data('inputlimiter').options.limit;
+                const left = Math.max(0, total - used);
+                
+                $('#usedChars').text(used);
+                $('#leftChars').text(left);
             }
 
-            updateCount();
-            console.log(`生成成功：${currentRow}行 × ${COL_NUM}列，总格子数${gridCells.length}`);
-        }
-
-        // 清空内容
-        function clearGrid() {
-            gridCells.forEach(cell => cell.textContent = '');
-            updateCount();
-            alert('已清空所有文字内容！');
-        }
-
-        // 最终优化：复制逻辑（完全匹配需求）
-        function copyAllContent() {
-            let content = '';
-            let lastHasTextRow = -1; // 最后一行有字的行号
-
-            // 1. 先找最后一行有字的行（从后往前）
-            for (let row = currentRow - 1; row >= 0; row--) {
-                const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
-                const hasText = rowCells.some(cell => cell.textContent.trim() !== '');
-                if (hasText) {
-                    lastHasTextRow = row;
-                    break;
-                }
-            }
-
-            // 2. 只处理“第一行到最后一行有字”的范围
-            for (let row = 0; row <= lastHasTextRow; row++) {
-                const rowCells = gridCells.slice(row * COL_NUM, (row + 1) * COL_NUM);
-                let lastTextCol = -1; // 当前行最后一个有字的列号
-
-                // 找当前行最后一个有字的格子
-                for (let col = rowCells.length - 1; col >= 0; col--) {
-                    if (rowCells[col].textContent.trim() !== '') {
-                        lastTextCol = col;
-                        break;
-                    }
-                }
-
-                // 3. 拼接当前行内容：
-                // - 有字行：到最后一个字为止，空格用半角空格（" "）
-                // - 空行：不保留任何空格，直接加换行
-                let rowText = '';
-                if (lastTextCol !== -1) { // 当前行有字
-                    for (let col = 0; col <= lastTextCol; col++) {
-                        rowText += rowCells[col].textContent.trim() || ' '; // 半角空格占位
-                    }
-                }
-                // 空行则 rowText 为空，直接加换行
-
-                // 加入总内容（行之间加换行）
-                content += rowText + '\n';
-            }
-
-            // 复制到剪贴板
-            navigator.clipboard.writeText(content)
-               .then(() => alert('复制成功！空行无空格，空格用半角占位'))
-               .catch(() => alert('复制失败，请手动选中内容复制'));
-        }
-
-        // 导出图片
-        function exportAsImage() {
-            const controlPanel = document.querySelector('.control-panel');
-            const originalDisplay = controlPanel.style.display;
-            controlPanel.style.display = 'none';
-            html2canvas(gridContainer, { scale: 2 })
-               .then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = `申论练习_${new Date().toLocaleDateString()}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                    controlPanel.style.display = originalDisplay;
-                    alert('图片已生成！');
-                })
-               .catch(() => {
-                    controlPanel.style.display = originalDisplay;
-                    alert('导出失败，请重试');
-                });
-        }
-
-        // 更新字数统计
-        function updateCount() {
-            const used = gridCells.filter(cell => cell.textContent.trim()!== '').length;
-            const total = COL_NUM * currentRow;
-            countInfoEl.innerHTML = `已用格子：${used} / ${total}`;
-            countInfoEl.className = used > total? 'count-info red' : 'count-info';
-        }
-
-        // 页面加载生成格子
-        window.onload = () => {
-            try {
-                const savedData = JSON.parse(localStorage.getItem('shenlunData'));
-                if (savedData && savedData.rows >=5 && savedData.rows <=50) {
-                    currentRow = savedData.rows;
-                    rowInput.value = currentRow;
-                }
-            } catch (e) {
-                console.log('加载缓存失败，使用默认行数');
-            }
-            generateGrid();
-        };
-
-        // 保存数据
-        window.addEventListener('beforeunload', () => {
-            const content = gridCells.map(cell => cell.textContent);
-            localStorage.setItem('shenlunData', JSON.stringify({
-                rows: currentRow,
-                content: content
-            }));
+            // 初始化字数提示
+            updateCharHint();
         });
     </script>
 </body>
